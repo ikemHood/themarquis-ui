@@ -40,7 +40,20 @@ const Wallet = ({
         handleConnectWallet(e, connector);
       }}
     >
-      <div className="h-[1.5rem] w-[1.5rem] rounded-[5px]">
+      <div className="flex items-center gap-[60px]">
+        <div className="rounded-[5px]">
+          <Image
+            alt={connector.name}
+            loader={loader}
+            src={icon}
+            width={100}
+            height={100}
+            className="max-w-[37px] max-h-[37px]"
+          />
+        </div>
+        <p className="text-[20px]">{connector.name}</p>
+      </div>
+      <div className="flex gap-3 bg-[#363D43]  rounded-[4px] h-[40px] w-[156px] items-center justify-center">
         <Image
           alt={connector.name}
           loader={loader}

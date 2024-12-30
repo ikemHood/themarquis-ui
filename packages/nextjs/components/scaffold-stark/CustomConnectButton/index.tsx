@@ -1,28 +1,35 @@
 "use client";
 
 // @refresh reset
-import { Balance } from "../Balance";
 import { AddressInfoDropdown } from "./AddressInfoDropdown";
 import { AddressQRCodeModal } from "./AddressQRCodeModal";
 import { WrongNetworkDropdown } from "./WrongNetworkDropdown";
-import { useAutoConnect, useNetworkColor } from "~~/hooks/scaffold-stark";
+import { useAutoConnect } from "~~/hooks/scaffold-stark";
 import { useTargetNetwork } from "~~/hooks/scaffold-stark/useTargetNetwork";
-import { getBlockExplorerAddressLink } from "~~/utils/scaffold-stark";
-import { useAccount, useNetwork } from "@starknet-react/core";
+import {
+  getBlockExplorerAddressLink,
+  notification,
+} from "~~/utils/scaffold-stark";
+import { useAccount, useConnect } from "@starknet-react/core";
 import { Address } from "@starknet-react/chains";
 import { useEffect, useMemo, useState } from "react";
 import ConnectModal from "./ConnectModal";
+import scaffoldConfig from "~~/scaffold.config";
+import { NetworkChangeEventHandler } from "get-starknet-core";
+import { CHAIN_ID_LOCALSTORAGE_KEY } from "~~/utils/Constants";
 
 /**
  * Custom Connect Button (watch balance + custom design)
  */
 export const CustomConnectButton = () => {
   useAutoConnect();
-  const networkColor = useNetworkColor();
   const { targetNetwork } = useTargetNetwork();
-  const { account, status, address: accountAddress } = useAccount();
-  const [accountChainId, setAccountChainId] = useState<bigint>(0n);
-  const { chain } = useNetwork();
+  const { connectors } = useConnect();
+  const { status, address: accountAddress } = useAccount();
+  const chainId = localStorage.getItem("chainId");
+  const [connectedChainId, setConnectedChainId] = useState(
+    BigInt(chainId || ""),
+  );
 
   const blockExplorerAddressLink = useMemo(() => {
     return (
@@ -31,36 +38,65 @@ export const CustomConnectButton = () => {
     );
   }, [accountAddress, targetNetwork]);
 
-  // effect to get chain id and address from account
   useEffect(() => {
-    if (account) {
-      const getChainId = async () => {
-        const chainId = await account.channel.getChainId();
-        setAccountChainId(BigInt(chainId as string));
-      };
+    let isNotificationShown = false;
 
-      getChainId();
+    const handleNetwork: NetworkChangeEventHandler = (
+      chainId?: string,
+      accounts?: string[],
+    ) => {
+      if (!!chainId) {
+        // console.log("Network changed to:", chainId);
+        if (
+          status === "connected" &&
+          BigInt(chainId) !== targetNetwork.id &&
+          !isNotificationShown
+        ) {
+          notification.error(
+            "Please connect to Starknet Sepolia network",
+          );
+          isNotificationShown = true;
+        }
+        localStorage.setItem(CHAIN_ID_LOCALSTORAGE_KEY, chainId);
+      }
+    };
+
+    if (connectors) {
+      connectors.map((connector) => {
+        connector.on("change", (data) =>
+          handleNetwork(data?.chainId?.toString()),
+        );
+      });
     }
-  }, [account]);
 
-  return status == "disconnected" ? (
+    return () => {
+      if (connectors) {
+        connectors.map((connector) => {
+          connector.off("change", (data) =>
+            handleNetwork(data?.chainId?.toString()),
+          );
+        });
+      }
+    };
+  }, [connectors, targetNetwork.id, status]);
+
+  // hook to update chainId when chainId in locastorage changes
+  useEffect(() => {
+    const chainId = localStorage.getItem("chainId");
+    if (chainId) {
+      setConnectedChainId(BigInt(chainId));
+    }
+  }, [chainId]);
+
+  if (status === "disconnected") return <ConnectModal />;
+  // Skip wrong network check if using a fork
+  if (!scaffoldConfig.isFork && connectedChainId !== targetNetwork.id) {
+    return <WrongNetworkDropdown />;
+  }
+
+  return (
     <>
-      <div
-        className="hidden connect-btn items-center font-lasserit md:flex h-[50px] gap-3 !px-5 2xl:!px-8"
-        onClick={handleWalletConnect}
-      >
-        <Image src={ConnectWalletIcon} alt="icon" />
-        <button type="button" className="text-[20px]">
-          Connect Wallet
-        </button>
-      </div>
-      <ConnectModal />
-    </>
-  ) : chainId !== targetNetwork.id ? (
-    <WrongNetworkDropdown />
-  ) : (
-    <>
-      <div className="flex flex-col items-center max-sm:mt-2">
+      {/* <div className="flex flex-col items-center max-sm:mt-2">
         <Balance
           address={accountAddress as Address}
           className="min-h-0 h-auto"
@@ -68,7 +104,7 @@ export const CustomConnectButton = () => {
         <span className="text-xs ml-1" style={{ color: networkColor }}>
           {chain.name}
         </span>
-      </div>
+      </div> */}
       <AddressInfoDropdown
         address={accountAddress as Address}
         displayName={""}

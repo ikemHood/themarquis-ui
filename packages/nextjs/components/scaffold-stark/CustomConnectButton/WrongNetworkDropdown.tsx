@@ -8,6 +8,12 @@ import { useDisconnect } from "@starknet-react/core";
 export const WrongNetworkDropdown = () => {
   const { disconnect } = useDisconnect();
 
+  const handleDisconnectWallet = () => {
+    disconnect();
+    localStorage.removeItem("lastUsedConnector");
+    localStorage.removeItem("chainId");
+  };
+
   return (
     <div className="dropdown dropdown-end mr-2">
       <label
