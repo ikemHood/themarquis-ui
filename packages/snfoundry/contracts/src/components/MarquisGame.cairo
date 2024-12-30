@@ -12,6 +12,7 @@ pub mod MarquisGame {
     use contracts::interfaces::IMarquisGame::{
         ForcedSessionFinished, GameErrors, GameStatus, IMarquisGame, InitParams, Session,
         SessionCreated, SessionData, SessionErrors, SessionJoined, VerifiableRandomNumber,
+        GameConstants, GameStarted,
     };
 
     use core::num::traits::Zero;
@@ -34,6 +35,7 @@ pub mod MarquisGame {
         SessionCreated: SessionCreated,
         SessionJoined: SessionJoined,
         ForcedSessionFinished: ForcedSessionFinished,
+        GameStarted: GameStarted,
     }
 
     /// @notice Storage structure for the MarquisGame component
@@ -63,8 +65,17 @@ pub mod MarquisGame {
         /// @param amount The amount of tokens to be used in the session
         /// @return session_id The ID of the newly created session
         fn create_session(
-            ref self: ComponentState<TContractState>, token: ContractAddress, amount: u256,
+            ref self: ComponentState<TContractState>,
+            token: ContractAddress,
+            amount: u256,
+            min_players: u32,
         ) -> u256 {
+            assert(
+                min_players >= GameConstants::DEFAULT_MIN_PLAYERS
+                    && min_players <= self.required_players.read(),
+                GameErrors::INVALID_MIN_PLAYERS,
+            );
+
             let mut session_id = self.session_counter.read() + 1;
             let player = get_caller_address();
             self._require_player_has_no_session(player);
@@ -81,12 +92,53 @@ pub mod MarquisGame {
                 nonce: 0,
                 play_amount: amount,
                 play_token: token,
+                min_players: min_players,
+                started: false,
             };
             self.sessions.write(session_id, new_session);
             self.session_players.write((session_id, 0), player);
 
-            self.emit(SessionCreated { session_id, creator: player, token, amount });
+            self.emit(SessionCreated { session_id, creator: player, token, amount, min_players });
             session_id
+        }
+
+        // manually `start game when minimum players are reached even if session min players is not
+        // reached.
+        // this way players can start playing even if the session min players is not reached.
+        fn start_game(ref self: ComponentState<TContractState>, session_id: u256) {
+            let mut session = self.sessions.read(session_id);
+
+            // Verify caller is session creator
+            assert(
+                self.session_players.read((session_id, 0)) == get_caller_address(),
+                GameErrors::NOT_SESSION_CREATOR,
+            );
+
+            // Check minimum players requirement
+            assert(
+                session.player_count >= GameConstants::DEFAULT_MIN_PLAYERS,
+                GameErrors::INSUFFICIENT_PLAYERS,
+            );
+
+            // Check game isn't already started
+            assert(!session.started, GameErrors::GAME_ALREADY_STARTED);
+
+            self
+                .sessions
+                .write(
+                    session.id,
+                    Session {
+                        id: session.id,
+                        player_count: session.player_count,
+                        next_player_id: session.next_player_id,
+                        nonce: session.nonce,
+                        play_amount: session.play_amount,
+                        play_token: session.play_token,
+                        min_players: session.min_players,
+                        started: true,
+                    },
+                );
+            self.emit(GameStarted { session_id, player_count: session.player_count });
         }
 
         /// @notice Allows a player to join an existing game session
@@ -340,6 +392,8 @@ pub mod MarquisGame {
                         nonce: session.nonce,
                         play_amount: session.play_amount,
                         play_token: session.play_token,
+                        min_players: session.min_players,
+                        started: session.started,
                     },
                 );
 
@@ -448,12 +502,15 @@ pub mod MarquisGame {
         /// @return felt252 The status of the session
         fn _session_status(self: @ComponentState<TContractState>, session_id: u256) -> felt252 {
             let session: Session = self.sessions.read(session_id);
-            if session.player_count == self.required_players.read() {
-                return GameStatus::PLAYING;
-                // Todo: Refactor this logic to check if the session is playing
-            } else if session.player_count == 0 {
+            if session.player_count == 0 {
                 return GameStatus::FINISHED;
             }
+
+            if session.started || session.player_count >= session.min_players {
+                return GameStatus::PLAYING;
+                // Todo: Refactor this logic to check if the session is playing
+            }
+
             return GameStatus::WAITING;
         }
 
