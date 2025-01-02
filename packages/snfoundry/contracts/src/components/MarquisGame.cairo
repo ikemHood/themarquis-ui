@@ -46,7 +46,6 @@ pub mod MarquisGame {
         player_session: Map<ContractAddress, u256>,
         sessions: Map<u256, Session>,
         session_counter: u256,
-        required_players: u32,
         max_random_number: u256,
         initialized: bool,
         marquis_oracle_address: EthAddress,
@@ -72,7 +71,7 @@ pub mod MarquisGame {
         ) -> u256 {
             assert(
                 min_players >= GameConstants::DEFAULT_MIN_PLAYERS
-                    && min_players <= self.required_players.read(),
+                    && min_players <= GameConstants::MAX_PLAYERS,
                 GameErrors::INVALID_MIN_PLAYERS,
             );
 
@@ -598,17 +597,11 @@ pub mod MarquisGame {
         /// @param marquis_core_addr The address of the Marquis core
         fn initializer(ref self: ComponentState<TContractState>, init_params: InitParams) {
             let InitParams {
-                name,
-                required_players,
-                marquis_oracle_address,
-                max_random_number,
-                marquis_core_address,
-                owner,
+                name, marquis_oracle_address, max_random_number, marquis_core_address, owner,
             } = init_params;
 
             assert(!self.initialized.read(), GameErrors::ALREADY_INITIALIZED);
             self.name.write(name);
-            self.required_players.write(required_players);
             self.max_random_number.write(max_random_number);
             self.marquis_oracle_address.write(marquis_oracle_address);
             self.marquis_core_address.write(marquis_core_address);

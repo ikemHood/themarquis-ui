@@ -77,7 +77,6 @@ pub mod Ludo {
             .initializer(
                 InitParams {
                     name: "Ludo",
-                    required_players: 4,
                     max_random_number: 6,
                     marquis_oracle_address,
                     marquis_core_address,
